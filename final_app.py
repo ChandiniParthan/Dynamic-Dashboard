@@ -6,6 +6,7 @@ import json
 import warnings
 from datetime import datetime
 from calendar import monthrange
+import re
 warnings.filterwarnings("ignore")
 
 app = Flask(__name__)
@@ -20,7 +21,20 @@ llm = AzureOpenAI(
 )
 
 def preprocess_data(dataset, group_by_columns, aggregation_rules, column_renames=None, conversion_columns=None, conversion_rate=1):
+    """
+    Preprocess the dataset by grouping and aggregating data.
 
+    Args:
+        dataset (pd.DataFrame): The input dataset.
+        group_by_columns (list): Columns to group by.
+        aggregation_rules (dict): Aggregation rules.
+        column_renames (dict, optional): Columns to rename.
+        conversion_columns (list, optional): Columns to convert.
+        conversion_rate (float, optional): Conversion rate.
+
+    Returns:
+        pd.DataFrame: The processed dataset.
+    """
     grouped_data = dataset.groupby(group_by_columns).agg(aggregation_rules).reset_index()
 
     if column_renames:
@@ -94,22 +108,33 @@ def ask_question(processed_data, question, formatt):
             return {"error": "Invalid JSON format in response", "details": str(e)}
 
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Failed to get completion from Azure OpenAI", "details": str(e)}
     
 
 def format_date_range(start_date_str, end_date_str):
+    """
+    Format the start and end dates to the first and last day of the month respectively.
+
+    Args:
+        start_date_str (datetime): The start date.
+        end_date_str (datetime): The end date.
+
+    Returns:
+        Union[Tuple[str, str], dict]: A tuple with formatted start and end dates, or an error dictionary.
+    """
 
     try:
-
+        # Convert start date to 1st day of the month
         formatted_start_date = start_date_str.replace(day=1).strftime("%d-%m-%Y")
                     
+        # Convert end date to the last day of the month
         last_day = monthrange(end_date_str.year, end_date_str.month)[1]
         formatted_end_date = end_date_str.replace(day=last_day).strftime("%d-%m-%Y")
                     
         return (formatted_start_date, formatted_end_date)
                 
     except ValueError as e:
-        return {"error": str(e)}
+        return {"error": f"Invalid date format: {e}"}
 
     
 ##############################################################################################
@@ -218,20 +243,6 @@ def progress_status(dataset):
         5. "salesQueries" (integer): The total number of sales queries.
         6. "total" (integer): The sum of operational, credit, and sales queries for the branch.
 
-        Example format:
-            {
-                "progressStatus": [
-                    {
-                        "branch": "CityName - Count",
-                        "branchManager": "ManagerName",
-                        "operational": <integer>,
-                        "credit": <integer>,
-                        "salesQueries": <integer>,
-                        "total": <integer>
-                    }
-                ]
-            }
-
         Ensure that the response is always valid JSON and strictly adheres to the above format.
         
         """
@@ -267,8 +278,8 @@ def progress_status(dataset):
         for chunk in chunks:
             analysis_result = ask_question(chunk, question, formatt)
             all_results.append(analysis_result)
-
         combined_result = json.dumps(all_results)
+       
        
         try:
             final_result = json.loads(combined_result)
@@ -397,7 +408,7 @@ def loan_processing(dataset_1, dataset_2):
 
 
 
-##############################################################################################
+###########################################################################################################
 
 
 
@@ -464,6 +475,10 @@ def categories(dataset,time_period,loan_type):
         
         analysis_result = ask_question(grouped_data, question, formatt)
 
+        # print("  ")
+        # print("############################################################################")
+        # print("  ")
+        # print(analysis_result)
 
         if isinstance(analysis_result, dict) and 'error' in analysis_result:
             return jsonify(analysis_result)
@@ -568,12 +583,7 @@ def loan_summary(dataset):
 ##############################################################################################
 
 
-def api_ask_question(query_text, category=None, timeperiod=None ):
-
-    # Get today's date for default start and end dates
-    today = datetime.now()
-    default_date = today.strftime("%b %Y")
-
+def api_ask_question(query_text, category=None):
     formatt = """
         {
             "startDate": "Oct 2024",
@@ -585,41 +595,45 @@ def api_ask_question(query_text, category=None, timeperiod=None ):
         }
     """
     prompt = f"""
-            You are given the text entered by the user. Use the text and extract the useful information as per the attached format.
+        You are given the text entered by the user. Use the text and extract the useful information as per the attached format.
 
-            Rules:
-            1. If the user doesn't mention a date range:
-            - Default to the today's date {default_date}  in the format of month and year.
-            - If the query mentions complete month name "december,september or similar", return only that month.
+        Rules:
+        1. If the user doesn't mention a date range:
+            - Default to the last month's start and end dates based on the current date.
 
-            2. For loanType:
-            - If the query mentions "home loan, house loan" return "Housing Loan."
-            - If it mentions "education loan," return "Education Loan."
-            - If it mentions "car loan, bike loan or similiar" return "vehicle Loan."
-            - Similarly, map other loanType explicitly if mentioned in the query.
+        2. For loanType:
+            - If 'category` is "all categories", set `loanType` to "Retail Loan".
+            - If a `category` is provided and is not "all categories", always set `loanType` to the value of `category`, regardless of what the query mentions.
+            - If no `category` is provided, determine the loan type from the query:
+                - If the query mentions "home loan," set `loanType` to "Housing Loan."
+                - If the query mentions "car loan", "bike loan", or any similar query with "vehicle", set `loanType` to "Vehicle Loan."
+                - Map other loan types explicitly if mentioned in the query.
+                - If no specific loan type is mentioned, default to "Retail Loan".
 
-            3. For status:
-            - If the {category} is not None, then keep the status as {category} 
-            - If the query specifies a particular loan type (e.g., "home loan"), set status to match the corresponding loan type (e.g., "housingLoan").
-            - If no specific category is mentioned in query, keep status as "allcategories"
+        3. For status:
+            - If `category` is "all categories", set `status` to "allcategories".
+            - If a `category` is provided and is not "all categories", always set `status` to the value of `category`, regardless of what the query mentions.
+            - If no `category` is provided, determine the status from the query:
+                - If the query specifies a loan type (e.g., "home loan", "gold loan"), set `status` to match the corresponding loan type (e.g., "housingLoan", "goldLoan").
+                - If no specific loan type is mentioned, default to "allcategories".
 
-            4. For timeperiod
-            - If the {timeperiod} is not None, then keep the type as {timeperiod}
-
-            5. Ensure the extracted details include:
+        4. Ensure the extracted details include:
             - A valid startDate and endDate.
             - Region (default to "Pan India" if not specified).
-            - A loanType that matches the context.
+            - A loanType that matches the `category` or query context.
             - A queryType relevant to the query, default to "logged-in cases" if no specific query type is mentioned.
 
-            Query:
-            {query_text}
+        Query:
+        {query_text}
 
-            Format the response strictly in this JSON format:
-            {formatt}
+        Additional Information:
+        - Category provided: {category}
 
-            Answer:
-        """
+        Format the response strictly in this JSON format:
+        {formatt}
+
+        Answer:
+    """
     try:
         completion = llm.chat.completions.create(
             model='gpt-4o-2',
@@ -639,17 +653,21 @@ def api_ask_question(query_text, category=None, timeperiod=None ):
         response = response.strip()
         return response
     except Exception as e:
-            return {"api_error is ": str(e)}
+        return jsonify({"error from the llm says ": str(e)})
+
 
 
 def extracter(response_json):
     try:
-        start_date_str = response_json.get("startDate", "default_date")
-        end_date_str = response_json.get("endDate", "default_date")
+        start_date_str = response_json.get("startDate", "")
+        end_date_str = response_json.get("endDate", "")
         loan_type = response_json.get("loanType", "")
         region = response_json.get("region", "")
         status = response_json.get("status","")
-        print()
+        # print(status)
+
+        # if not start_date_str or not end_date_str or not loan_type or not region:
+        #     return jsonify({"error": "Missing startDate, endDate, loanType, or region in the response"})
 
         start_date = datetime.strptime(start_date_str, "%b %Y")
         end_date = datetime.strptime(end_date_str, "%b %Y")
@@ -664,8 +682,8 @@ def extracter(response_json):
         else:
             time_period = "Annually"
 
-        dataset = pd.read_csv(r"C:\Users\chandinip\Downloads\Synthetic_Banking_Customer_Dataset_1 1.csv")
-        # dataset = pd.read_csv(r"C:\week3_assignment\Synthetic_Banking_Customer_Dataset_1.csv")
+        # dataset = pd.read_csv(r"C:\Users\chandinip\Downloads\Synthetic_Banking_Customer_Dataset_1 1.csv")
+        dataset = pd.read_csv(r"C:\week3_assignment\Synthetic_Banking_Customer_Dataset_1.csv")
 
 
         try:
@@ -696,10 +714,10 @@ def extracter(response_json):
             dataset_1 = dataset_1[dataset_1['Branch'].str.contains(loan_type, case=False, na=False)]
 
         if filtered_dataset.empty:
-            return {
+            return jsonify({
                 "queryResult": response_json,
                 "message": "No records found for the given criteria."
-            }
+            })
         # print(filtered_dataset.shape)
             
         loan_summary_response = loan_summary(filtered_dataset).get_json()
@@ -711,6 +729,7 @@ def extracter(response_json):
         categories_response = categories(filtered_dataset,time_period,loan_type).get_json()
         print("categories_response is done..")
         loan_processing_response = loan_processing(filtered_dataset, dataset_1).get_json()
+        # print(loan_processing_response)
         print("loan_processing_response is done..")
 
         # print(start_date, end_date)
@@ -734,13 +753,13 @@ def extracter(response_json):
 
         return aggregated_response
     except json.JSONDecodeError as e:
-        return jsonify({"error": "Invalid JSON format in response", "details": str(e)})
+        return ({"error": "Invalid JSON format in response", "details": str(e)})
     except Exception as e:
-        return {"extracter_error is ": str(e)}
+        return ({"error is ": str(e)})
 
-##############################################################################################
 
-@app.route('/query-search', methods=['GET'])
+
+@app.route('/search', methods=['GET'])
 def search():
     data = request.json
     query_text = data.get("query", "")
@@ -750,53 +769,35 @@ def search():
     except json.JSONDecodeError as e:
         return jsonify({"error": "Invalid JSON format in response", "details": str(e)})
     except Exception as e:
-        return {"search_error is ": str(e)}
+        return jsonify({"error is ": str(e)})
     
-##############################################################################################
+#####################################################################################################
 
 
-@app.route('/category-selected', methods=['GET'])
+@app.route('/categorySelected', methods=['GET'])
 def category_selected():
     data = request.json
-    
     query_text = data.get("query", "")
     catType = data.get("categoryType","")
 
     try:
-        response_cat_json = json.loads(api_ask_question(query_text, catType))
-        print(response_cat_json)
-        return jsonify(extracter(response_cat_json))
+        response_json = json.loads(api_ask_question(query_text, catType))
+        return jsonify(extracter(response_json))
     except json.JSONDecodeError as e:
         return jsonify({"error": "Invalid JSON format in response", "details": str(e)})
     except Exception as e:
-        return jsonify({"category_error is ": str(e)})
+        return jsonify({"error is ": str(e)})
 
 
 
 
-##############################################################################################
 
-@app.route('/time-period-selected', methods=['GET'])
-def time_period_selected():
 
-    data = request.json
-    query_text = data.get("query", "")
-    time_periodType = data.get("timePeriod", "").lower()
 
-    if not query_text or not time_periodType:
-        return jsonify({"error": "Missing required fields 'query' or 'timePeriod'"})
 
-    try:
-        response_timeperiod_json = json.loads(api_ask_question(query_text, time_periodType))
-        result = extracter(response_timeperiod_json)
 
-       
-        return jsonify(result)
-    except json.JSONDecodeError as e:
-        return jsonify({"error": "Invalid JSON format in response", "details": str(e)})
-    except Exception as e:
-        return {"timePeriod_error is ": str(e)}
 
+######################################################################################################
 
 if __name__ == "__main__":     
     app.run(debug=True)
