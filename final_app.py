@@ -59,6 +59,8 @@ def prompt(safe_data_string, question, formatted_response):
     Question:
     {question}
 
+    Ensure that the response is always valid JSON and strictly adheres to the provided format. Do not include any additional information or explanations.
+
     Format the response strictly in this JSON format:
     {formatted_response}
 
@@ -164,32 +166,46 @@ def case_status(dataset):
     )
     try:
         question = """
-            Summarize the loan cases by process status, including the count of cases and the total amounts Work in Progress, sanctioned and disbursed. 
+            Summarize the loan cases by process status. For each status, provide the following details:
+            - status: The process status (e.g., "WORK_IN_PROGRESS", "SANCTIONED", "DISBURSED").
+            - amount: The total amount for the status.
+            - caseCount: The count of cases for the status.
+            - fillColor_percentage: The percentage of the total amount represented by this status. It should always same as in the formatt.
+            - color: A color code associated with the status. It should always same as in the formatt.
+
             Provide the result in the specified JSON format.
         """
         formatt = """
         {
-        "casesStatus": [
-            {
-            "status": "Work_in_Progress",
-            "cases": 763,
-            "amount": 5000
-            },
-            {
-            "status": "Sanctioned",
-            "cases": 10000,
-            "amount": 20000
-            },
-            {
-            "status": Disbursed,
-            "cases": 2000,
-            "amount": 7000
+            "caseStatusForBarchart": {
+                "total": [
+                    {
+                        "status": "WORK_IN_PROGRESS",
+                        "amount": 1489348.00,
+                        "caseCount": 1,
+                        "fillColor_percentage": 21.23,
+                        "color": "#7E3BF0"
+                    },
+                    {
+                        "status": "SANCTIONED",
+                        "amount": 1626610.00,
+                        "caseCount": 2,
+                        "fillColor_percentage": 23.19,
+                        "color":"#B0AFFF"
+                    },
+                    {
+                        "status": "DISBURSED",
+                        "amount": 3610340.00,
+                        "caseCount": 3,
+                        "fillColor_percentage": 55.58,
+                        "color":"#3B39F0"
+                    }
+                ]
             }
-        ]
         }
     """
         
-        analysis_result = ask_question(processed_data,question, formatt)
+        analysis_result = ask_question(processed_data, question, formatt)
 
         if isinstance(analysis_result, dict) and 'error' in analysis_result:
             return jsonify(analysis_result)
@@ -208,7 +224,7 @@ def progress_status(dataset):
         data = dataset[dataset['Process Status'] == 'Work in Progress']
         data['Query Type (Only WIP)'] = data['Query Type (Only WIP)'].str.lower()
 
-         # Calculate the total branches per city
+        # Calculate the total branches per city
         data['City'] = data['Branch'].str.split('-').str[0].str.strip()
         branch_counts = data['City'].value_counts().to_dict()
 
@@ -244,42 +260,46 @@ def progress_status(dataset):
         6. "total" (integer): The sum of operational, credit, and sales queries for the branch.
 
         Ensure that the response is always valid JSON and strictly adheres to the above format.
-        
         """
-        formatt = {
-            "progressStatus": [
-                {
-                    "branch": "Mumbai - 10",
-                    "branchManager": "Jane Doe",
-                    "operational": 56000,
-                    "credit": 31000,
-                    "salesQueries": 100,
-                    "total": 87100
-                },
-                {
-                    "branch": "Chennai - 01",
-                    "branchManager": "Jane Doe",
-                    "operational": 0,
-                    "credit": 60000,
-                    "salesQueries": 98,
-                    "total": 60098
-                },
-                {
-                    "branch": "Coimbatore - 02",
-                    "branchManager": "Jane Doe",
-                    "operational": 80000,
-                    "credit": 25000,
-                    "salesQueries": 32,
-                    "total": 105032
-                }
-            ]
+        formatt = """
+        {
+            "progressStatus": {
+                "commonTitle": "Progress Status",
+                "items" : [
+                    {
+                        "branch": "Mumbai - 10",
+                        "branchManager": "Jane Doe",
+                        "operational": 56000,
+                        "credit": 31000,
+                        "salesQueries": 100,
+                        "total": 87100
+                    },
+                    {
+                        "branch": "Chennai - 01",
+                        "branchManager": "Jane Doe",
+                        "operational": 0,
+                        "credit": 60000,
+                        "salesQueries": 98,
+                        "total": 60098
+                    },
+                    {
+                        "branch": "Coimbatore - 02",
+                        "branchManager": "Jane Doe",
+                        "operational": 80000,
+                        "credit": 25000,
+                        "salesQueries": 32,
+                        "total": 105032
+                    }
+                ]
+            }
         }
+        """
 
         for chunk in chunks:
             analysis_result = ask_question(chunk, question, formatt)
             all_results.append(analysis_result)
+        
         combined_result = json.dumps(all_results)
-       
        
         try:
             final_result = json.loads(combined_result)
@@ -293,8 +313,6 @@ def progress_status(dataset):
 ##############################################################################################
 
 def loan_processing(dataset_1, dataset_2):
-    # print(dataset_1['LoanStatus'].unique())
-
     group_by = ['LoanStatus']
     aggregations = {
         'Customer ID': 'count',
@@ -332,33 +350,39 @@ def loan_processing(dataset_1, dataset_2):
         """
         formatt = """
         {
-            "loanProcessingMetrics": [
-                {
-                    "name": "approval_rate",
-                    "totalPercentage": 85.46,
-                    "status": "Positive", 
-                    "statusRate": 1.5
-                },
-                {
-                    "name": "denial_rate",
-                    "totalPercentage": 9.73,
-                    "status": "Positive",
-                    "statusRate": 1.5
-                },
-                {
-                    "name": "submission_cancelled",
-                    "totalPercentage": 20,
-                    "status": "Negative",
-                    "statusRate": 1.5
-                }
-            ]
+            "metrics" : {
+                "commonTitle": "Loan Processing",
+                "items": [
+                    {
+                    "subTitle": "Approval Rate",
+                    "value": "82%",
+                    "diffValue": "1.5%",
+                    "color": "red",
+                    "direction":"down"
+                    },
+                    {
+                    "subTitle": "Denial Rate",
+                    "value": "22.5%",
+                    "diffValue": "2.1%",
+                    "color": "green",
+                    "direction":"up"
+                    },
+                    {
+                    "subTitle": "Submission Cancelled",
+                    "value": "32%",
+                    "diffValue": "1.5%",
+                    "color": "red",
+                    "direction":"down"
+                    }
+                ]
+            }
         }
         """
         prompt = f"""
             You are given the following processed loan datasets and a question. Use the datasets to answer the question in the exact JSON format provided below.
 
             Processed Loan Data:
-            {processed_data_1, processed_data_2}
+            {processed_data_1.to_dict(orient='records')}, {processed_data_2.to_dict(orient='records')}
 
             Question:
             {question}
@@ -392,13 +416,12 @@ def loan_processing(dataset_1, dataset_2):
             response = response[:-3]
 
         response = response.strip()
-        # print(response)
+        
         try:
             response_json = json.loads(response)
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON format in LLM response: {e}")
 
-        # print(response_json)
         return jsonify(response_json)
         
     except Exception as e:
@@ -456,22 +479,21 @@ def categories(dataset,time_period,loan_type):
         question = f"""
         Format the loan data into a JSON structure where each loan type's name is a key, where the values is calculated by finding the percentage to the total count,
         and the value is its corresponding percentage. Use camelCase formatting for keys.
-        Add \"timePeriod\": \"{time_period}\" and \"subCategories\": \"{subCategory}\" at the top level.
+        Add "timePeriod": "{time_period}" and "subCategories": "{subCategory}" at the top level.
         """
 
         formatt = f"""
-                "categories": {{
-                "timePeriod": "{time_period}",
-                "subCategories": "{subCategory}",
-                "allCategories": {percentages.get('allCategories', 0):.2f},
-                "housingLoan": {percentages.get('housingLoan', 0):.2f},
-                "vehicleLoan": {percentages.get('vehicleLoan', 0):.2f},
-                "educationalLoan": {percentages.get('educationalLoan', 0):.2f},
-                "personalLoan": {percentages.get('personalLoan', 0):.2f},
-                "goldLoan": {percentages.get('goldLoan', 0):.2f},
-                "loanAgainstProperty": {percentages.get('loanAgainstProperty', 0):.2f}
-            }},
-            """
+        {{
+            "categoryKeyArr": [
+            {{"dataKey": "HOUSING_LOAN", "fill": "#962DFF", "label": "Housing Loan", "percentageValue": "{percentages.get('housingLoan', 0)}%"}},
+            {{"dataKey": "VEHICLE_LOAN", "fill": "#4A3AFF", "label": "Vehicle Loan", "percentageValue": "{percentages.get('vehicleLoan', 0)}%"}},
+            {{"dataKey": "EDUCATIONAL_LOAN", "fill": "#E0C6FD", "label": "Educational Loan", "percentageValue": "{percentages.get('educationalLoan', 0)}%"}},
+            {{"dataKey": "PERSONAL_LOAN", "fill": "#D2DCFE", "label": "Personal Loan", "percentageValue": "{percentages.get('personalLoan', 0)}%"}},
+            {{"dataKey": "GOLD_LOAN", "fill": "#7A47B4", "label": "Gold Loan", "percentageValue": "{percentages.get('goldLoan', 0)}%"}},
+            {{"dataKey": "LOAN_AGAINST_PROPERTY", "fill": "#4B66C5", "label": "Loan Against Property", "percentageValue": "{percentages.get('loanAgainstProperty', 0)}%"}}
+            ]
+        }}
+        """
         
         analysis_result = ask_question(grouped_data, question, formatt)
 
@@ -494,68 +516,63 @@ def categories(dataset,time_period,loan_type):
 def loan_summary(dataset):
     try:
         # Define the question and expected format
-        question = f"""
-        Summarize the loan data grouped by Loan Type, Year, and Month . Strictly Include the total no of logged in cases and total amount sanctioned, and format the results for a bar chart.
+        question = """
+        Summarize the loan data grouped by Loan Type, Year, and Month. Strictly include the total number of logged-in cases and total amount sanctioned, and format the results for a bar chart.
+        The JSON should include:
+        - "barChartLeftLbl": Label for the left side of the bar chart.
+        - "barChartRightLbl": Label for the right side of the bar chart.
+        - "barChartRightValue": Total loan amount.
+        - "barChartLeftValue": Total number of logged-in cases.
+        - "chartDetails": An array of objects, each representing a month with the following properties:
+            - "name": The month and year (e.g., "JAN-2024").
+            - For each loan type (e.g., "HOUSING_LOAN", "GOLD_LOAN"), include:
+                - "cases": The total number of cases.
+                - "amount": The total loan amount.
+
+        Ensure that the response is always valid JSON and strictly adheres to the above format.
         """
         format_template = """
         {
-        'barChart': {
-                'chartHeader': [
+            "barChart": {
+                "barChartLeftLbl": "Total Logged In Cases",
+                "barChartRightLbl": "Total Loan Amount",
+                "barChartRightValue": 12563000,
+                "barChartLeftValue": 32000,
+                "chartDetails": [
                     {
-                        "name": "Total Logged In Cases",
-                        "totalcases": 300
+                        "name": "JAN-2024",
+                        "HOUSING_LOAN": { "cases": 111, "amount": 111 },
+                        "GOLD_LOAN": { "cases": 111, "amount": 111 },
+                        "LOAN_AGAINST_PROPERTY": { "cases": 111, "amount": 111 },
+                        "VEHICLE_LOAN": { "cases": 111, "amount": 111 },
+                        "EDUCATIONAL_LOAN": { "cases": 111, "amount": 111 }, 
+                        "PERSONAL_LOAN": { "cases": 111, "amount": 111 }
                     },
-                    {
-                        "name": "Total Loan Amount",
-                        "amt": 500000
+                    { "name": "FEB-2024", 
+                        "HOUSING_LOAN": { "cases": 111, "amount": 111 },
+                        "GOLD_LOAN": { "cases": 111, "amount": 111 },
+                        "LOAN_AGAINST_PROPERTY": { "cases": 111, "amount": 111 },
+                        "VEHICLE_LOAN": { "cases": 111, "amount": 111 },
+                        "EDUCATIONAL_LOAN": { "cases": 111, "amount": 111 }, 
+                        "PERSONAL_LOAN": { "cases": 111, "amount": 111 }
+                    },
+                    { 
+                        "name": "MAR-2024", 
+                        "HOUSING_LOAN": { "cases": 111, "amount": 111 },
+                        "GOLD_LOAN": { "cases": 111, "amount": 111 },
+                        "LOAN_AGAINST_PROPERTY": { "cases": 111, "amount": 111 },
+                        "VEHICLE_LOAN": { "cases": 111, "amount": 111 },
+                        "EDUCATIONAL_LOAN": { "cases": 111, "amount": 111 }, 
+                        "PERSONAL_LOAN": { "cases": 111, "amount": 111 }
                     }
-                ],
-                "barChartValues": [
-                    
-                        {
-                            "businessLoan": 25,
-                            "businessLoanamt": 34511,
-                            "educationLoan": 25,
-                            "educationLoanamt": 320143,
-                            "goldLoan": 17,
-                            "goldLoanamt": 23658,
-                            "housingLoan": 24,
-                            "housingLoanamt": 302780,
-                            "loanAgainstProperty": 28,
-                            "loanAgainstPropertyamt": 420171,
-                            "personalLoan": 19,
-                            "personalLoanamt": 42943,
-                            "vehicleLoan": 17,
-                            "vehicleLoanamt": 20773,
-                            "month": "JAN"
-                        },
-                        {
-                            "businessLoan": 35,
-                            "businessLoanamt": 345100,
-                            "educationLoan": 15,
-                            "educationLoanamt": 320137,
-                            "goldLoan": 20,
-                            "goldLoanamt": 23650,
-                            "housingLoan": 31,
-                            "housingLoanamt": 302080,
-                            "loanAgainstProperty": 27,
-                            "loanAgainstPropertyamt": 120171,
-                            "personalLoan": 14,
-                            "personalLoanamt": 43943,
-                            "vehicleLoan": 23,
-                            "vehicleLoanamt": 50773,
-                            "month": "FEB"
-                        }
-                    ...
                 ]
             }
         }
         """
-        # print(dataset.shape)
-
+        
         dataset['Year'] = pd.to_datetime(dataset['Requested Date']).dt.year
-        dataset['Month'] = pd.to_datetime(dataset['Requested Date']).dt.strftime('%b').str.upper()
- 
+        dataset['Month'] = pd.to_datetime(dataset['Requested Date']).dt.strftime('%b-%Y').str.upper()
+
         group_by_columns = ['Loan Type', 'Month']
         aggregations = {
             'Customer ID': 'count',
@@ -565,23 +582,30 @@ def loan_summary(dataset):
             'Customer ID': 'total_cases',
             'Loan Amount Sanctioned': 'total_amount'
         }
- 
+
         processed_data = preprocess_data(
             dataset=dataset,
             group_by_columns=group_by_columns,
             aggregation_rules=aggregations,
             column_renames=rename_map
         )
-        # print(processed_data)
+
         analysis_result = ask_question(processed_data, question, format_template)
- 
+
         return jsonify(analysis_result)
- 
+
     except Exception as e:
         return jsonify({"error": str(e)})
 
 ##############################################################################################
 
+
+from datetime import datetime
+import json
+from flask import Flask, request, jsonify
+import pandas as pd
+
+app = Flask(__name__)
 
 def api_ask_question(query_text, category=None):
     formatt = """
@@ -594,12 +618,21 @@ def api_ask_question(query_text, category=None):
             "status": "allcategories"
         }
     """
+    today = datetime.now()
+    default_date = today.strftime("%b %Y")
     prompt = f"""
         You are given the text entered by the user. Use the text and extract the useful information as per the attached format.
 
         Rules:
         1. If the user doesn't mention a date range:
-            - Default to the last month's start and end dates based on the current date.
+            - Default to the current month and year {default_date}.
+            - If the query asks for quarterly data, return the current quarter:
+                - Q1: January to March
+                - Q2: April to June
+                - Q3: July to September
+                - Q4: October to December
+            - If the query asks for yearly data, return January to December of the current year.
+            - If the query mentions a complete month name (e.g., "December", "September"), return only that month.
 
         2. For loanType:
             - If 'category` is "all categories", set `loanType` to "Retail Loan".
@@ -651,11 +684,9 @@ def api_ask_question(query_text, category=None):
             response = response[:-3]
 
         response = response.strip()
-        return response
+        return json.loads(response)
     except Exception as e:
-        return jsonify({"error from the llm says ": str(e)})
-
-
+        return {"error from the llm says ": str(e)}
 
 def extracter(response_json):
     try:
@@ -664,15 +695,11 @@ def extracter(response_json):
         loan_type = response_json.get("loanType", "")
         region = response_json.get("region", "")
         status = response_json.get("status","")
-        # print(status)
-
-        # if not start_date_str or not end_date_str or not loan_type or not region:
-        #     return jsonify({"error": "Missing startDate, endDate, loanType, or region in the response"})
 
         start_date = datetime.strptime(start_date_str, "%b %Y")
         end_date = datetime.strptime(end_date_str, "%b %Y")
 
-            # Determine the time period
+        # Determine the time period
         delta_months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month) + 1
 
         if delta_months < 3:
@@ -682,16 +709,13 @@ def extracter(response_json):
         else:
             time_period = "Annually"
 
-        # dataset = pd.read_csv(r"C:\Users\chandinip\Downloads\Synthetic_Banking_Customer_Dataset_1 1.csv")
         dataset = pd.read_csv(r"C:\week3_assignment\Synthetic_Banking_Customer_Dataset_1.csv")
-
 
         try:
             dataset['Approval Date'] = pd.to_datetime(dataset['Approval Date'], format="%d-%m-%Y", errors='coerce')
         except Exception as e:
-            return jsonify({"error": f"Error parsing 'Approval Date': {e}"})
+            return {"error": f"Error parsing 'Approval Date': {e}"}
 
-        # dataset = dataset.dropna(subset=['Approval Date'])
         dataset['Requested Date'] = pd.to_datetime(dataset['Requested Date'], errors='coerce')
         filtered_dataset = dataset[
             (dataset['Requested Date'] >= start_date) & (dataset['Requested Date'] <= end_date)
@@ -703,7 +727,6 @@ def extracter(response_json):
         dataset_1 = dataset[
             (dataset['Requested Date'] >= start_date_1) & (dataset['Requested Date'] <= end_date_1)
         ]
-            # print(loan_type)
 
         if loan_type.lower() != "retail loan":
             filtered_dataset = filtered_dataset[filtered_dataset['Loan Type'].str.contains(loan_type, case=False, na=False)]
@@ -714,65 +737,52 @@ def extracter(response_json):
             dataset_1 = dataset_1[dataset_1['Branch'].str.contains(loan_type, case=False, na=False)]
 
         if filtered_dataset.empty:
-            return jsonify({
+            return {
                 "queryResult": response_json,
                 "message": "No records found for the given criteria."
-            })
-        # print(filtered_dataset.shape)
-            
-        loan_summary_response = loan_summary(filtered_dataset).get_json()
-        print("loan_summary_response is done..")
-        case_status_response = case_status(filtered_dataset).get_json()
-        print("case_status_response is done..")
-        progress_status_response = progress_status(filtered_dataset).get_json()
-        print("progress_status_response is done..")
-        categories_response = categories(filtered_dataset,time_period,loan_type).get_json()
-        print("categories_response is done..")
-        loan_processing_response = loan_processing(filtered_dataset, dataset_1).get_json()
-        # print(loan_processing_response)
-        print("loan_processing_response is done..")
+            }
 
-        # print(start_date, end_date)
+        loan_summary_response = loan_summary(filtered_dataset).get_json()
+        case_status_response = case_status(filtered_dataset).get_json()
+        progress_status_response = progress_status(filtered_dataset).get_json()
+        categories_response = categories(filtered_dataset, time_period, loan_type).get_json()
+        loan_processing_response = loan_processing(filtered_dataset, dataset_1).get_json()
+
         formatted_dates = format_date_range(start_date, end_date)
 
         aggregated_response = {
-                "type": loan_type,
-                "subCategory": status,
-                "fromDate": formatted_dates[0],
-                "toDate": formatted_dates[1],
-                "timePeriod": time_period,
-                "totalNoofCases":loan_summary_response['barChart']['chartHeader'][0]['totalcases'],
-                "amount":loan_summary_response['barChart']['chartHeader'][1]['amt'],
-                "currency":"USD",
-                "cases": loan_summary_response['barChart']["barChartValues"],
-                "loanProcessingMetrics":loan_processing_response["loanProcessingMetrics"],
-                "caseStatus": case_status_response["casesStatus"],
-                "progressStatus": progress_status_response["progressStatus"],
-                "categories": categories_response['categories']
-            }
+            "type": loan_type,
+            "subCategory": status,
+            "fromDate": formatted_dates[0],
+            "toDate": formatted_dates[1],
+            "timePeriod": time_period,
+            "currency": "USD",
+            "barChart": loan_summary_response['barChart'],
+            "metrics": loan_processing_response["metrics"],
+            "caseStatusForBarchart": case_status_response["caseStatusForBarchart"],
+            "progressStatus": progress_status_response["progressStatus"],
+            "categoryKeyArr": categories_response['categoryKeyArr']
+        }
 
         return aggregated_response
     except json.JSONDecodeError as e:
-        return ({"error": "Invalid JSON format in response", "details": str(e)})
+        return {"error": "Invalid JSON format in response", "details": str(e)}
     except Exception as e:
-        return ({"error is ": str(e)})
-
-
+        return {"error while aggregating the response ": str(e)}
 
 @app.route('/search', methods=['GET'])
 def search():
     data = request.json
     query_text = data.get("query", "")
     try:
-        response_json = json.loads(api_ask_question(query_text))
+        response_json = api_ask_question(query_text)
         return jsonify(extracter(response_json))
     except json.JSONDecodeError as e:
         return jsonify({"error": "Invalid JSON format in response", "details": str(e)})
     except Exception as e:
         return jsonify({"error is ": str(e)})
     
-#####################################################################################################
-
+######################################################################################################
 
 @app.route('/categorySelected', methods=['GET'])
 def category_selected():
@@ -781,7 +791,7 @@ def category_selected():
     catType = data.get("categoryType","")
 
     try:
-        response_json = json.loads(api_ask_question(query_text, catType))
+        response_json = api_ask_question(query_text, catType)
         return jsonify(extracter(response_json))
     except json.JSONDecodeError as e:
         return jsonify({"error": "Invalid JSON format in response", "details": str(e)})
