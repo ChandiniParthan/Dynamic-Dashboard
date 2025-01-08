@@ -431,7 +431,7 @@ def loan_processing(dataset_1, dataset_2):
 
 
 
-###########################################################################################################
+##############################################################################################
 
 
 
@@ -478,7 +478,7 @@ def categories(dataset,time_period,loan_type):
 
         question = f"""
         Format the loan data into a JSON structure where each loan type's name is a key, where the values is calculated by finding the percentage to the total count,
-        and the value is its corresponding percentage. Use camelCase formatting for keys.
+        and the value is its corresponding percentage. Strictly follow the format of dataKey.
         Add "timePeriod": "{time_period}" and "subCategories": "{subCategory}" at the top level.
         """
 
@@ -526,8 +526,8 @@ def loan_summary(dataset):
         - "chartDetails": An array of objects, each representing a month with the following properties:
             - "name": The month and year (e.g., "JAN-2024").
             - For each loan type (e.g., "HOUSING_LOAN", "GOLD_LOAN"), include:
-                - "cases": The total number of cases.
-                - "amount": The total loan amount.
+            - "cases": The total number of cases. If number of cases is 0, then don't add the loanType in response (ex: if number of cases is 0 for education loan , then don't show "EDUCATIONAL_LOAN" in response)
+            - "amount": The total loan amount.
 
         Ensure that the response is always valid JSON and strictly adheres to the above format.
         """
@@ -596,6 +596,7 @@ def loan_summary(dataset):
 
     except Exception as e:
         return jsonify({"error": str(e)})
+    
 
 ##############################################################################################
 
@@ -607,7 +608,7 @@ import pandas as pd
 
 app = Flask(__name__)
 
-def api_ask_question(query_text, category=None):
+def api_ask_question(query_text, category=None, timeperiod = None):
     formatt = """
         {
             "startDate": "Oct 2024",
@@ -616,6 +617,7 @@ def api_ask_question(query_text, category=None):
             "loanType": "Retail Loan",
             "queryType": "logged-in cases",
             "status": "allcategories"
+            
         }
     """
     today = datetime.now()
@@ -640,6 +642,7 @@ def api_ask_question(query_text, category=None):
             - If no `category` is provided, determine the loan type from the query:
                 - If the query mentions "home loan," set `loanType` to "Housing Loan."
                 - If the query mentions "car loan", "bike loan", or any similar query with "vehicle", set `loanType` to "Vehicle Loan."
+                - If the query mentions "loan against property or loanagainstproperty", set `loanType` to "Loan Against Property"
                 - Map other loan types explicitly if mentioned in the query.
                 - If no specific loan type is mentioned, default to "Retail Loan".
 
@@ -650,7 +653,13 @@ def api_ask_question(query_text, category=None):
                 - If the query specifies a loan type (e.g., "home loan", "gold loan"), set `status` to match the corresponding loan type (e.g., "housingLoan", "goldLoan").
                 - If no specific loan type is mentioned, default to "allcategories".
 
-        4. Ensure the extracted details include:
+        4. For `timeperiod`:
+             - If the `timeperiod` is not None and value is "monthly",then set corresponding values for `startDate` and `endDate` to represent the relevant month.
+             - If the `timeperiod` is not None and value is "quarterly",then set corresponding values for `startDate` and `endDate` to represent the relevant quarter.
+             - If the `timeperiod` is not None and value is "annually",then set corresponding values for `startDate` and `endDate`to represent the entire year.
+
+
+        5. Ensure the extracted details include:
             - A valid startDate and endDate.
             - Region (default to "Pan India" if not specified).
             - A loanType that matches the `category` or query context.
@@ -661,6 +670,7 @@ def api_ask_question(query_text, category=None):
 
         Additional Information:
         - Category provided: {category}
+        - Timeperiod provided: {timeperiod}
 
         Format the response strictly in this JSON format:
         {formatt}
@@ -709,7 +719,8 @@ def extracter(response_json):
         else:
             time_period = "Annually"
 
-        dataset = pd.read_csv(r"C:\week3_assignment\Synthetic_Banking_Customer_Dataset_1.csv")
+        # dataset = pd.read_csv(r"C:\week3_assignment\Synthetic_Banking_Customer_Dataset_1.csv")
+        dataset = pd.read_csv(r"C:\Users\chandinip\Downloads\Synthetic_Banking_Customer_Dataset_1 1.csv")
 
         try:
             dataset['Approval Date'] = pd.to_datetime(dataset['Approval Date'], format="%d-%m-%Y", errors='coerce')
@@ -741,6 +752,27 @@ def extracter(response_json):
                 "queryResult": response_json,
                 "message": "No records found for the given criteria."
             }
+        
+        loan_summary_response = loan_summary(filtered_dataset).get_json()
+        print("loan_summary_response")
+        print(" ")
+        print(loan_summary_response)
+        case_status_response = case_status(filtered_dataset).get_json()
+        print("case_status_response")
+        print(" ")
+        print(case_status_response)
+        progress_status_response = progress_status(filtered_dataset).get_json()
+        print("progress_status_response")
+        print(" ")
+        print(progress_status_response)
+        categories_response = categories(filtered_dataset,time_period,loan_type).get_json()
+        print("categories_response")
+        print(" ")
+        print(categories_response)
+        loan_processing_response = loan_processing(filtered_dataset, dataset_1).get_json()
+        print("loan_processing_response")
+        print(" ")
+        print(loan_processing_response)
 
         loan_summary_response = loan_summary(filtered_dataset).get_json()
         case_status_response = case_status(filtered_dataset).get_json()
@@ -769,6 +801,9 @@ def extracter(response_json):
         return {"error": "Invalid JSON format in response", "details": str(e)}
     except Exception as e:
         return {"error while aggregating the response ": str(e)}
+    
+
+##############################################################################################
 
 @app.route('/search', methods=['GET'])
 def search():
@@ -782,7 +817,7 @@ def search():
     except Exception as e:
         return jsonify({"error is ": str(e)})
     
-######################################################################################################
+##############################################################################################
 
 @app.route('/categorySelected', methods=['GET'])
 def category_selected():
@@ -801,13 +836,29 @@ def category_selected():
 
 
 
+##############################################################################################
 
+@app.route('/time-period-selected', methods=['GET'])
+def time_period_selected():
 
+    data = request.json
+    query_text = data.get("query", "")
+    time_periodType = data.get("timePeriod", "").lower()
 
+    if not query_text or not time_periodType:
+        return jsonify({"error": "Missing required fields 'query' or 'timePeriod'"})
 
+    try:
+        response_timeperiod_json = api_ask_question(query_text, time_periodType)
+        result = extracter(response_timeperiod_json)
 
-
-######################################################################################################
+       
+        return jsonify(result)
+    except json.JSONDecodeError as e:
+        return jsonify({"error": "Invalid JSON format in response", "details": str(e)})
+    except Exception as e:
+        return {"timePeriod_error is ": str(e)}
 
 if __name__ == "__main__":     
     app.run(debug=True)
+
