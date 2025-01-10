@@ -624,7 +624,8 @@ def api_ask_question(query_text, category=None, timePeriod=None):
             "region": "Pan India",
             "loanType": "retailLoan",
             "queryType": "logged-in cases",
-            "status": "allcategories"
+            "status": "allcategories",
+            "timePeriod": "quarterly"
         }
     """
     today = datetime.now()
@@ -696,7 +697,14 @@ def api_ask_question(query_text, category=None, timePeriod=None):
         - `Region` (default to "Pan India").
         - A `loanType` matching the `category` or query context.
         - A `queryType` (default to "logged-in cases").
+    
 
+    7. **For `timePeriod` in the output JSON**:
+        - Determine the value dynamically based on the calculated `startDate` and `endDate`:
+            - **"monthly"**: If the difference between `startDate` and `endDate` is within one month.
+            - **"quarterly"**: If the difference between `startDate` and `endDate` spans three months.
+            - **"annually"**: If the difference between `startDate` and `endDate` spans twelve months.
+        - Ensure that the `timePeriod` aligns with the final determined date range.
     Query:
     {query_text}
 
@@ -763,16 +771,16 @@ def extracter(response_json):
         status = response_json.get("status","")
         
 
-        # Determine the time period
+        # # Determine the time period
         delta_months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month) + 1
 
-        if delta_months < 3:
-            time_period = "Monthly"
-        elif delta_months < 12:
-            time_period = "Quarterly"
-        else:
-            time_period = "Annually"
-
+        # if delta_months < 3:
+        #     time_period = "monthly"
+        # elif delta_months < 12:
+        #     time_period = "quarterly"
+        # else:
+        #     time_period = "Annually"
+        time_period = response_json.get("timePeriod", "")
         dataset = pd.read_csv(r"C:\week3_assignment\Synthetic_Banking_Customer_Dataset_1.csv")
         # dataset = pd.read_csv(r"C:\Users\chandinip\Downloads\Synthetic_Banking_Customer_Dataset_1 1.csv")
 
