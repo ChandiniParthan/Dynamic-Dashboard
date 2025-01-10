@@ -236,9 +236,13 @@ def progress_status(dataset):
             'total': x['Query Type (Only WIP)'].count()
         })).reset_index()
 
-        # Update branch names to include total branch count
+        # Check if there are multiple branches in the dataset
+        total_branches = len(data['Branch'].unique())
+
+        # Update branch names to include total branch count only if there are multiple branches in the dataset
         grouped_summary['Branch'] = grouped_summary['Branch'].apply(
-            lambda x: f"{x.split('-')[0].strip()} - {branch_counts.get(x.split('-')[0].strip(), 1)}"
+            lambda x: f"{x.split('-')[0].strip()} - {branch_counts.get(x.split('-')[0].strip(), 1)}" 
+            if total_branches > 1 else x.split('-')[0].strip()
         )
 
         grouped_summary = grouped_summary.sort_values(by='total', ascending=False).reset_index(drop=True)
@@ -457,7 +461,7 @@ def categories(dataset,time_period,loan_type):
         grouped_data['percentage'] = (grouped_data['Total_cases'] / total_count) * 100
         grouped_data['percentage'] = grouped_data['percentage'].round(2)
 
-        subCategory = ""
+        # subCategory = ""
         percentages = {
             "allCategories": 0,
             "housingLoan": 0,
@@ -468,29 +472,40 @@ def categories(dataset,time_period,loan_type):
             "loanAgainstProperty": 0
         }
 
-        if loan_type.lower() == "retail loan":
-            subCategory = "allCategories"
-            percentages = grouped_data.set_index('Loan Type')['percentage'].to_dict()
-        else:
-            subCategory = loan_type.lower()
-            for loan in percentages.keys():
-                percentages[loan] = grouped_data.loc[grouped_data['Loan Type'].str.lower() == subCategory, 'percentage'].sum() if loan == subCategory else 0
+        # if loan_type.lower() == "retail loan":
+        #     subCategory = "allCategories"
+        #     percentages = grouped_data.set_index('Loan Type')['percentage'].to_dict()
+        # else:
+        #     subCategory = loan_type.lower()
+        #     for loan in percentages.keys():
+        #         percentages[loan] = grouped_data.loc[grouped_data['Loan Type'].str.lower() == subCategory, 'percentage'].sum() if loan == subCategory else 0
 
         question = f"""
-        Format the loan data into a JSON structure where each loan type's name is a key, where the values is calculated by finding the percentage to the total count,
-        and the value is its corresponding percentage. Strictly follow the format of dataKey.
-        Add "timePeriod": "{time_period}" and "subCategories": "{subCategory}" at the top level.
+            Format the loan data into a JSON structure where each loan type's name is a key, and the values are calculated by finding the percentage of the total count.
+            Strictly follow the format of dataKey. Add "timePeriod": "{time_period}" and "subCategories": "{loan_type}" at the top level.
+            Ensure that the response includes a "selected" field for each category, which is true for the subCategory and false for others.
+
+            Rules:
+            1. Each loan type's name should be a key in the JSON structure.
+            2. The value for each key should be the percentage of the total count.
+            3. Add "timePeriod": "{time_period}" at the top level.
+            4. Add "subCategories": "{loan_type}" at the top level.
+            5. Include a "selected" field for each category:
+            - Set "selected" to true for the subCategory.
+            - Set "selected" to false for all other categories.
+            6. Ensure the response is always valid JSON and strictly adheres to the format.
         """
 
         formatt = f"""
         {{
             "categoryKeyArr": [
-            {{"dataKey": "HOUSING_LOAN", "fill": "#962DFF", "label": "Housing Loan", "percentageValue": "{percentages.get('housingLoan', 0)}%"}},
-            {{"dataKey": "VEHICLE_LOAN", "fill": "#4A3AFF", "label": "Vehicle Loan", "percentageValue": "{percentages.get('vehicleLoan', 0)}%"}},
-            {{"dataKey": "EDUCATIONAL_LOAN", "fill": "#E0C6FD", "label": "Educational Loan", "percentageValue": "{percentages.get('educationalLoan', 0)}%"}},
-            {{"dataKey": "PERSONAL_LOAN", "fill": "#D2DCFE", "label": "Personal Loan", "percentageValue": "{percentages.get('personalLoan', 0)}%"}},
-            {{"dataKey": "GOLD_LOAN", "fill": "#7A47B4", "label": "Gold Loan", "percentageValue": "{percentages.get('goldLoan', 0)}%"}},
-            {{"dataKey": "LOAN_AGAINST_PROPERTY", "fill": "#4B66C5", "label": "Loan Against Property", "percentageValue": "{percentages.get('loanAgainstProperty', 0)}%"}}
+            {{"dataKey": "ALL_CATEGORIES", "fill": "#4A3AFF", "label": "All Categories", "selected": true}},
+            {{"dataKey": "HOUSING_LOAN", "fill": "#962DFF", "label": "Housing Loan", "percentageValue": "{percentages.get('housingLoan', 0)}%", "selected": false}},
+            {{"dataKey": "VEHICLE_LOAN", "fill": "#4A3AFF", "label": "Vehicle Loan", "percentageValue": "{percentages.get('vehicleLoan', 0)}%", "selected": false}},
+            {{"dataKey": "EDUCATIONAL_LOAN", "fill": "#E0C6FD", "label": "Educational Loan", "percentageValue": "{percentages.get('educationalLoan', 0)}%", "selected": false}},
+            {{"dataKey": "PERSONAL_LOAN", "fill": "#D2DCFE", "label": "Personal Loan", "percentageValue": "{percentages.get('personalLoan', 0)}%", "selected": false}},
+            {{"dataKey": "GOLD_LOAN", "fill": "#7A47B4", "label": "Gold Loan", "percentageValue": "{percentages.get('goldLoan', 0)}%", "selected": false}},
+            {{"dataKey": "LOAN_AGAINST_PROPERTY", "fill": "#4B66C5", "label": "Loan Against Property", "percentageValue": "{percentages.get('loanAgainstProperty', 0)}%", "selected": false}}
             ]
         }}
         """
@@ -522,7 +537,7 @@ def loan_summary(dataset):
         - "barChartLeftLbl": Label for the left side of the bar chart.
         - "barChartRightLbl": Label for the right side of the bar chart.
         - "barChartRightValue": Total loan amount.
-        - "barChartLeftValue": Total number of logged-in cases.
+        - "barChartLeftValue": Total number of logged-in cases. It should be correct values.
         - "chartDetails": An array of objects, each representing a month with the following properties:
             - "name": The month and year (e.g., "JAN-2024").
             - For each loan type (e.g., "HOUSING_LOAN", "GOLD_LOAN"), include:
@@ -601,113 +616,152 @@ def loan_summary(dataset):
 ##############################################################################################
 
 
-from datetime import datetime
-import json
-from flask import Flask, request, jsonify
-import pandas as pd
-
-app = Flask(__name__)
-
-def api_ask_question(query_text, category=None, timeperiod = None):
+def api_ask_question(query_text, category=None, timePeriod=None):
     formatt = """
         {
             "startDate": "Oct 2024",
             "endDate": "Dec 2024",
             "region": "Pan India",
-            "loanType": "Retail Loan",
+            "loanType": "retailLoan",
             "queryType": "logged-in cases",
             "status": "allcategories"
-            
         }
     """
     today = datetime.now()
-    default_date = today.strftime("%b %Y")
+    default_date = today.strftime("%Y-%m-%d")
+    print(timePeriod)
     prompt = f"""
-        You are given the text entered by the user. Use the text and extract the useful information as per the attached format.
+    You are a system that extracts structured information from user queries. Based on the query, determine details for loan analytics.
 
-        Rules:
-        1. If the user doesn't mention a date range:
-            - Default to the current month and year {default_date}.
-            - If the query asks for quarterly data, return the current quarter:
-                - Q1: January to March
-                - Q2: April to June
-                - Q3: July to September
-                - Q4: October to December
-            - If the query asks for yearly data, return January to December of the current year.
-            - If the query mentions a complete month name (e.g., "December", "September"), return only that month.
+    ### Inputs:
+    - **Default Date**: {default_date} (use this as the base date for calculations when no explicit date is mentioned).
+    - **Timeperiod**: {timePeriod} (can be "monthly", "quarterly", "annually", or None).
 
-        2. For loanType:
-            - If 'category` is "all categories", set `loanType` to "Retail Loan".
+    ### Rules:
+
+    1. **Date Extraction**:
+        - First, analyze the query for explicit mentions of dates, months, or years:
+            - If a specific month and year (e.g., "Sep 2024") is mentioned, extract it.
+            - If only a year is mentioned (e.g., "2024"), assume the entire year.
+            - If it mentions a range (e.g., "from Jan 2024 to Mar 2024"), extract the start and end dates.
+            - If it specifies quarterly data and given a year, extract the first quarter of the year, Or if the quarter is mentioned, extract the corresponding dates, or if the month and year are mentioned, extract the corresponding quarter.
+            - If a relative time period is mentioned (e.g., "previous year", "this month"), infer the corresponding dates based on `default_date`.
+    
+    2. **Default Date Behavior**:
+        - If no explicit dates are mentioned in the query:
+            - Default to the current month and year from `default_date`.
+            - Set `startDate` to the first day of the current month and `endDate` to the last day of the current month.
+
+    3. **Timeperiod Adjustment**:
+        - After extracting dates from the query:
+            - **If `timePeriod` is not None**:
+                - Adjust the dates based on the specified `timePeriod`:
+                    - **If it is "monthly"**:
+                        - If the query already specifies quarterly or yearly data:
+                            - Adjust `startDate` to the first day of the first month in the specified period.
+                            - Adjust `endDate` to the last day of the same month.
+                        - Otherwise, adjust `startDate` and `endDate` to the extracted month's boundaries.
+                    - **If it is "quarterly"**:
+                        - If the query already specifies yearly data:
+                            - Identify the quarter based on the extracted year and adjust:
+                                - Q1: Jan 1 to Mar 31
+                                - Q2: Apr 1 to Jun 30
+                                - Q3: Jul 1 to Sep 30
+                                - Q4: Oct 1 to Dec 31
+                        - If the query specifies monthly data, expand the range to include the full quarter of the extracted month.
+                    - **If it is "annually"**:
+                        - Adjust `startDate` to Jan 1 of the extracted year and `endDate` to Dec 31 of the same year.
+            - **If `timePeriod` is None**:
+                - Leave the extracted dates unchanged.
+
+    4. For `loanType`:
+        - If `category` is "all categories", set `loanType` to "retailLoan".
             - If a `category` is provided and is not "all categories", always set `loanType` to the value of `category`, regardless of what the query mentions.
             - If no `category` is provided, determine the loan type from the query:
                 - If the query mentions "home loan," set `loanType` to "Housing Loan."
                 - If the query mentions "car loan", "bike loan", or any similar query with "vehicle", set `loanType` to "Vehicle Loan."
                 - If the query mentions "loan against property or loanagainstproperty", set `loanType` to "Loan Against Property"
                 - Map other loan types explicitly if mentioned in the query.
-                - If no specific loan type is mentioned, default to "Retail Loan".
+                - If no specific loan type is mentioned, default to "retailLoan".
 
-        3. For status:
-            - If `category` is "all categories", set `status` to "allcategories".
+    5. For `status`:
+         - If `category` is "all categories", set `status` to "allcategories".
             - If a `category` is provided and is not "all categories", always set `status` to the value of `category`, regardless of what the query mentions.
             - If no `category` is provided, determine the status from the query:
                 - If the query specifies a loan type (e.g., "home loan", "gold loan"), set `status` to match the corresponding loan type (e.g., "housingLoan", "goldLoan").
                 - If no specific loan type is mentioned, default to "allcategories".
 
-        4. For `timeperiod`:
-             - If the `timeperiod` is not None and value is "monthly",then set corresponding values for `startDate` and `endDate` to represent the relevant month.
-             - If the `timeperiod` is not None and value is "quarterly",then set corresponding values for `startDate` and `endDate` to represent the relevant quarter.
-             - If the `timeperiod` is not None and value is "annually",then set corresponding values for `startDate` and `endDate`to represent the entire year.
+    6. Ensure the extracted details include:
+        - A valid `startDate` and `endDate` in the format `YYYY-MM-DD`.
+        - `Region` (default to "Pan India").
+        - A `loanType` matching the `category` or query context.
+        - A `queryType` (default to "logged-in cases").
 
+    Query:
+    {query_text}
 
-        5. Ensure the extracted details include:
-            - A valid startDate and endDate.
-            - Region (default to "Pan India" if not specified).
-            - A loanType that matches the `category` or query context.
-            - A queryType relevant to the query, default to "logged-in cases" if no specific query type is mentioned.
+    Additional Information:
+    - Category provided: {category}
+    - TimePeriod provided: {timePeriod}
 
-        Query:
-        {query_text}
+    Format the response strictly in this JSON format:
+    {formatt}
 
-        Additional Information:
-        - Category provided: {category}
-        - Timeperiod provided: {timeperiod}
-
-        Format the response strictly in this JSON format:
-        {formatt}
-
-        Answer:
+    Answer:
     """
+
+
     try:
         completion = llm.chat.completions.create(
-            model='gpt-4o-2',
-            messages=[
-                {"role": "system", "content": "You are an assistant that analyzes loan data."},
-                {"role": "user", "content": prompt}
-            ],
+            model="gpt-4o-2",
+            messages=[{"role": "system", "content": "You are an assistant that extracts and formats data for loan analytics."},
+                      {"role": "user", "content": prompt}],
             temperature=0.5,
             max_tokens=4000
         )
         response = completion.choices[0].message.content
+
+        # Extract JSON from the response
         if response.startswith("```json"):
             response = response[7:]
         if response.endswith("```"):
             response = response[:-3]
 
-        response = response.strip()
-        return json.loads(response)
+        response_data = json.loads(response)
+
+        # Validate and fix dates
+        start_date = response_data.get("startDate", "").strip()
+        end_date = response_data.get("endDate", "").strip()
+
+        if not start_date or not end_date:
+            raise ValueError("Missing or invalid startDate/endDate in response.")
+
+        return response_data
+
+    except ValueError as date_error:
+        # Provide fallback for invalid dates
+        current_month = today.strftime("%b")
+        current_year = today.strftime("%Y")
+        return {
+            "startDate": f"{current_month} 01, {current_year}",
+            "endDate": f"{current_month} 31, {current_year}",
+            "error": f"Date parsing failed: {str(date_error)}"
+        }
     except Exception as e:
-        return {"error from the llm says ": str(e)}
+        return {"error from the LLM": str(e)}
+
+
 
 def extracter(response_json):
     try:
         start_date_str = response_json.get("startDate", "")
         end_date_str = response_json.get("endDate", "")
+        start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+        end_date = datetime.strptime(end_date_str,"%Y-%m-%d")
         loan_type = response_json.get("loanType", "")
         region = response_json.get("region", "")
         status = response_json.get("status","")
-
-        start_date = datetime.strptime(start_date_str, "%b %Y")
-        end_date = datetime.strptime(end_date_str, "%b %Y")
+        
 
         # Determine the time period
         delta_months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month) + 1
@@ -719,8 +773,8 @@ def extracter(response_json):
         else:
             time_period = "Annually"
 
-        # dataset = pd.read_csv(r"C:\week3_assignment\Synthetic_Banking_Customer_Dataset_1.csv")
-        dataset = pd.read_csv(r"C:\Users\chandinip\Downloads\Synthetic_Banking_Customer_Dataset_1 1.csv")
+        dataset = pd.read_csv(r"C:\week3_assignment\Synthetic_Banking_Customer_Dataset_1.csv")
+        # dataset = pd.read_csv(r"C:\Users\chandinip\Downloads\Synthetic_Banking_Customer_Dataset_1 1.csv")
 
         try:
             dataset['Approval Date'] = pd.to_datetime(dataset['Approval Date'], format="%d-%m-%Y", errors='coerce')
@@ -739,7 +793,7 @@ def extracter(response_json):
             (dataset['Requested Date'] >= start_date_1) & (dataset['Requested Date'] <= end_date_1)
         ]
 
-        if loan_type.lower() != "retail loan":
+        if loan_type.lower() != "retailloan":
             filtered_dataset = filtered_dataset[filtered_dataset['Loan Type'].str.contains(loan_type, case=False, na=False)]
             dataset_1 = dataset_1[dataset_1['Loan Type'].str.contains(loan_type, case=False, na=False)]
 
@@ -753,32 +807,37 @@ def extracter(response_json):
                 "message": "No records found for the given criteria."
             }
         
+        # loan_summary_response = loan_summary(filtered_dataset).get_json()
+        # print("loan_summary_response")
+        # print(" ")
+        # print(loan_summary_response)
+        # case_status_response = case_status(filtered_dataset).get_json()
+        # print("case_status_response")
+        # print(" ")
+        # print(case_status_response)
+        # progress_status_response = progress_status(filtered_dataset).get_json()
+        # print("progress_status_response")
+        # print(" ")
+        # print(progress_status_response)
+        # categories_response = categories(filtered_dataset,time_period,loan_type).get_json()
+        # print("categories_response")
+        # print(" ")
+        # print(categories_response)
+        # loan_processing_response = loan_processing(filtered_dataset, dataset_1).get_json()
+        # print("loan_processing_response")
+        # print(" ")
+        # print(loan_processing_response)
+        print("Started to load....")
         loan_summary_response = loan_summary(filtered_dataset).get_json()
-        print("loan_summary_response")
-        print(" ")
-        print(loan_summary_response)
+        print("loan_summary_response....")
         case_status_response = case_status(filtered_dataset).get_json()
-        print("case_status_response")
-        print(" ")
-        print(case_status_response)
+        print("case_status_response....")
         progress_status_response = progress_status(filtered_dataset).get_json()
-        print("progress_status_response")
-        print(" ")
-        print(progress_status_response)
+        print("progress_status_response....")
         categories_response = categories(filtered_dataset,time_period,loan_type).get_json()
-        print("categories_response")
-        print(" ")
-        print(categories_response)
+        print("categories_response....")
         loan_processing_response = loan_processing(filtered_dataset, dataset_1).get_json()
-        print("loan_processing_response")
-        print(" ")
-        print(loan_processing_response)
-
-        loan_summary_response = loan_summary(filtered_dataset).get_json()
-        case_status_response = case_status(filtered_dataset).get_json()
-        progress_status_response = progress_status(filtered_dataset).get_json()
-        categories_response = categories(filtered_dataset, time_period, loan_type).get_json()
-        loan_processing_response = loan_processing(filtered_dataset, dataset_1).get_json()
+        print("loan_processing_response....")
 
         formatted_dates = format_date_range(start_date, end_date)
 
@@ -811,6 +870,7 @@ def search():
     query_text = data.get("query", "")
     try:
         response_json = api_ask_question(query_text)
+        print(response_json)
         return jsonify(extracter(response_json))
     except json.JSONDecodeError as e:
         return jsonify({"error": "Invalid JSON format in response", "details": str(e)})
@@ -826,7 +886,7 @@ def category_selected():
     catType = data.get("categoryType","")
 
     try:
-        response_json = api_ask_question(query_text, catType)
+        response_json = api_ask_question(query_text, category=catType, timePeriod=None)
         return jsonify(extracter(response_json))
     except json.JSONDecodeError as e:
         return jsonify({"error": "Invalid JSON format in response", "details": str(e)})
@@ -845,11 +905,9 @@ def time_period_selected():
     query_text = data.get("query", "")
     time_periodType = data.get("timePeriod", "").lower()
 
-    if not query_text or not time_periodType:
-        return jsonify({"error": "Missing required fields 'query' or 'timePeriod'"})
-
     try:
-        response_timeperiod_json = api_ask_question(query_text, time_periodType)
+        response_timeperiod_json = api_ask_question(query_text, category=None, timePeriod=time_periodType)
+        print(response_timeperiod_json)
         result = extracter(response_timeperiod_json)
 
        
@@ -861,4 +919,3 @@ def time_period_selected():
 
 if __name__ == "__main__":     
     app.run(debug=True)
-
